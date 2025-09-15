@@ -6,6 +6,8 @@ LOG_LEVEL="INFO"
 TELEGRAM_BOT_TOKEN=""
 TELEGRAM_CHAT_ID=""
 TELEGRAM_ENDPOINT="api.telegram.org"
+SLOTS=()
+PHYSICAL_DRIVES=()
 
 show_usage() {
     echo "Usage: $0 [OPTIONS]"
@@ -13,6 +15,8 @@ show_usage() {
     echo "  --telegram-bot-token TOKEN     Telegram bot token for notifications"
     echo "  --telegram-chat-id ID          Telegram chat ID for notifications"
     echo "  --telegram-custom-endpoint     Custom Telegram API endpoint (domain only). Default: api.telegram.org"
+    echo "  --slot NUMBER                  Check specific slot (can be used multiple times)"
+    echo "  --physical-drive PORT:BOX:BAY  Check specific drive (can be used multiple times)"
     exit 1
 }
 
@@ -32,6 +36,22 @@ while [[ $# -gt 0 ]]; do
             ;;
         --telegram-custom-endpoint)
             TELEGRAM_ENDPOINT="$2"
+            shift 2
+            ;;
+        --slot)
+            if ! [[ "$2" =~ ^[0-9]+$ ]]; then
+                echo "Error: --slot must be a number"
+                exit 1
+            fi
+            SLOTS+=("$2")
+            shift 2
+            ;;
+        --physical-drive)
+            if ! [[ "$2" =~ ^[0-9]+[A-Z]:[0-9]+:[0-9]+$ ]]; then
+                echo "Error: --physical-drive must be in format PORT:BOX:BAY (e.g., 1I:2:1)"
+                exit 1
+            fi
+            PHYSICAL_DRIVES+=("$2")
             shift 2
             ;;
         -h|--help)
@@ -153,10 +173,16 @@ while IFS= read -r line; do
     fi
 done <<< "$controller_output"
 
-slots=$(echo "$controller_output" | grep -oP 'Slot \K\d+')
-if [[ -z "$slots" ]]; then
-    log "ERROR" "No controller slots found"
-    exit 1
+if [[ ${#SLOTS[@]} -gt 0 ]]; then
+    slots="${SLOTS[*]}"
+    log "DEBUG" "Using specified slots: $slots"
+else
+    slots=$(echo "$controller_output" | grep -oP 'Slot \K\d+')
+    if [[ -z "$slots" ]]; then
+        log "ERROR" "No controller slots found"
+        exit 1
+    fi
+    log "DEBUG" "Found slots: $slots"
 fi
 
 drive_errors=0
@@ -178,10 +204,24 @@ for slot in $slots; do
     
     drive_count=0
     while IFS= read -r line; do
-        if [[ "$line" =~ physicaldrive\ ([^:]+):.*\(([^,]+),\ ([^\)]+)\):\ (.+) ]]; then
+        if [[ "$line" =~ physicaldrive\ ([^\ ]+)\ .*\(([^,]+),\ ([^\)]+)\):\ (.+) ]]; then
             drive_id="${BASH_REMATCH[1]}"
             size="${BASH_REMATCH[3]}"
             status="${BASH_REMATCH[4]}"
+            
+            if [[ ${#PHYSICAL_DRIVES[@]} -gt 0 ]]; then
+                found=false
+                for target_drive in "${PHYSICAL_DRIVES[@]}"; do
+                    if [[ "$drive_id" == "$target_drive" ]]; then
+                        found=true
+                        break
+                    fi
+                done
+                if [[ "$found" == "false" ]]; then
+                    continue
+                fi
+            fi
+            
             drive_count=$((drive_count + 1))
             
             if [[ "$status" != "OK" ]]; then
@@ -193,7 +233,11 @@ for slot in $slots; do
         fi
     done <<< "$drive_output"
     
-    log "INFO" "Controller slot $slot has $drive_count physical drives"
+    if [[ ${#PHYSICAL_DRIVES[@]} -gt 0 ]]; then
+        log "INFO" "Controller slot $slot checked $drive_count specified drives"
+    else
+        log "INFO" "Controller slot $slot has $drive_count physical drives"
+    fi
 done
 
 if [[ $controller_errors -eq 0 && $drive_errors -eq 0 ]]; then
