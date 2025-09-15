@@ -1,0 +1,10 @@
+[Unit]
+Description=HPE Smart Array Health Checker Timer
+Documentation=https://github.com/fernvenue/ssacli-checker
+
+[Timer]
+OnCalendar=*-*-* 23:30:00
+Unit=ssacli-checker.service
+
+[Install]
+WantedBy=timers.target

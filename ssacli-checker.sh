@@ -2,12 +2,20 @@
 
 set -euo pipefail
 
-LOG_LEVEL="INFO"
-TELEGRAM_BOT_TOKEN=""
-TELEGRAM_CHAT_ID=""
-TELEGRAM_ENDPOINT="api.telegram.org"
+LOG_LEVEL="${SSACLI_LOG_LEVEL:-INFO}"
+TELEGRAM_BOT_TOKEN="${SSACLI_TELEGRAM_BOT_TOKEN:-}"
+TELEGRAM_CHAT_ID="${SSACLI_TELEGRAM_CHAT_ID:-}"
+TELEGRAM_ENDPOINT="${SSACLI_TELEGRAM_ENDPOINT:-api.telegram.org}"
 SLOTS=()
 PHYSICAL_DRIVES=()
+
+if [[ -n "${SSACLI_SLOTS:-}" ]]; then
+    IFS=',' read -ra SLOTS <<< "$SSACLI_SLOTS"
+fi
+
+if [[ -n "${SSACLI_PHYSICAL_DRIVES:-}" ]]; then
+    IFS=',' read -ra PHYSICAL_DRIVES <<< "$SSACLI_PHYSICAL_DRIVES"
+fi
 
 show_usage() {
     echo "Usage: $0 [OPTIONS]"
@@ -17,6 +25,15 @@ show_usage() {
     echo "  --telegram-custom-endpoint     Custom Telegram API endpoint (domain only). Default: api.telegram.org"
     echo "  --slot NUMBER                  Check specific slot (can be used multiple times)"
     echo "  --physical-drive PORT:BOX:BAY  Check specific drive (can be used multiple times)"
+    echo "  --physical-drives DRIVES       Comma-separated drives in PORT:BOX:BAY format"
+    echo ""
+    echo "Environment variables:"
+    echo "  SSACLI_LOG_LEVEL               Set log level (overrides --log-level)"
+    echo "  SSACLI_TELEGRAM_BOT_TOKEN      Telegram bot token (overrides --telegram-bot-token)"
+    echo "  SSACLI_TELEGRAM_CHAT_ID        Telegram chat ID (overrides --telegram-chat-id)"
+    echo "  SSACLI_TELEGRAM_ENDPOINT       Telegram API endpoint (overrides --telegram-custom-endpoint)"
+    echo "  SSACLI_SLOTS                   Comma-separated slot numbers (overrides --slot)"
+    echo "  SSACLI_PHYSICAL_DRIVES         Comma-separated drives in PORT:BOX:BAY format (overrides --physical-drive)"
     exit 1
 }
 
@@ -52,6 +69,17 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             PHYSICAL_DRIVES+=("$2")
+            shift 2
+            ;;
+        --physical-drives)
+            IFS=',' read -ra drives <<< "$2"
+            for drive in "${drives[@]}"; do
+                if ! [[ "$drive" =~ ^[0-9]+[A-Z]:[0-9]+:[0-9]+$ ]]; then
+                    echo "Error: each drive in --physical-drives must be in format PORT:BOX:BAY (e.g., 1I:2:1)"
+                    exit 1
+                fi
+                PHYSICAL_DRIVES+=("$drive")
+            done
             shift 2
             ;;
         -h|--help)

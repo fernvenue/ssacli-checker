@@ -1,0 +1,15 @@
+[Unit]
+Description=HPE Smart Array Health Checker
+Documentation=https://github.com/fernvenue/ssacli-checker
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ssacli-checker.sh
+# Environment=SSACLI_SLOT=
+# Environment=SSACLI_PHYSICAL_DRIVES=
+# Environment=SSACLI_TELEGRAM_BOT_TOKEN=
+# Environment=SSACLI_TELEGRAM_CHAT_ID=
+# Environment=SSACLI_TELEGRAM_ENDPOINT=
+
+[Install]
+WantedBy=default.target
