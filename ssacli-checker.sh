@@ -3,10 +3,16 @@
 set -euo pipefail
 
 LOG_LEVEL="INFO"
+TELEGRAM_BOT_TOKEN=""
+TELEGRAM_CHAT_ID=""
+TELEGRAM_ENDPOINT="api.telegram.org"
 
 show_usage() {
-    echo "Usage: $0 [--log-level LEVEL]"
-    echo "  --log-level LEVEL    Set log level (ERROR, WARN, INFO, DEBUG). Default: INFO"
+    echo "Usage: $0 [OPTIONS]"
+    echo "  --log-level LEVEL              Set log level (ERROR, WARN, INFO, DEBUG). Default: INFO"
+    echo "  --telegram-bot-token TOKEN     Telegram bot token for notifications"
+    echo "  --telegram-chat-id ID          Telegram chat ID for notifications"
+    echo "  --telegram-custom-endpoint     Custom Telegram API endpoint (domain only). Default: api.telegram.org"
     exit 1
 }
 
@@ -14,6 +20,18 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --log-level)
             LOG_LEVEL="${2^^}"
+            shift 2
+            ;;
+        --telegram-bot-token)
+            TELEGRAM_BOT_TOKEN="$2"
+            shift 2
+            ;;
+        --telegram-chat-id)
+            TELEGRAM_CHAT_ID="$2"
+            shift 2
+            ;;
+        --telegram-custom-endpoint)
+            TELEGRAM_ENDPOINT="$2"
             shift 2
             ;;
         -h|--help)
@@ -51,6 +69,46 @@ log() {
     
     if [[ $level_num -le $LOG_LEVEL_NUM ]]; then
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$level] $message"
+    fi
+}
+
+send_telegram_notification() {
+    local message="$1"
+    local status="$2"
+    
+    if [[ -z "$TELEGRAM_BOT_TOKEN" || -z "$TELEGRAM_CHAT_ID" ]]; then
+        return 0
+    fi
+    
+    local hostname=$(hostname)
+    local emoji
+    case "$status" in
+        "success") emoji="✅" ;;
+        "error") emoji="❌" ;;
+        "warning") emoji="⚠️" ;;
+        *) emoji="ℹ️" ;;
+    esac
+    
+    local full_message="$emoji *HPE Array Check - $hostname*
+
+$message
+
+_$(date '+%Y-%m-%d %H:%M:%S')_"
+    
+    log "DEBUG" "Sending Telegram notification to chat $TELEGRAM_CHAT_ID"
+    
+    curl -s -X POST "https://$TELEGRAM_ENDPOINT/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"chat_id\": \"$TELEGRAM_CHAT_ID\",
+            \"text\": \"$full_message\",
+            \"parse_mode\": \"Markdown\"
+        }" > /dev/null
+    
+    if [[ $? -eq 0 ]]; then
+        log "DEBUG" "Telegram notification sent successfully"
+    else
+        log "WARN" "Failed to send Telegram notification"
     fi
 }
 
@@ -140,8 +198,22 @@ done
 
 if [[ $controller_errors -eq 0 && $drive_errors -eq 0 ]]; then
     log "INFO" "Health check completed successfully - no errors found"
+    send_telegram_notification "All HPE Smart Array controllers and drives are healthy" "success"
     exit 0
 else
+    error_summary=""
+    if [[ $controller_errors -gt 0 ]]; then
+        error_summary="Controller errors detected"
+    fi
+    if [[ $drive_errors -gt 0 ]]; then
+        if [[ -n "$error_summary" ]]; then
+            error_summary="$error_summary and drive errors detected"
+        else
+            error_summary="Drive errors detected"
+        fi
+    fi
+    
     log "ERROR" "Health check completed with errors found"
+    send_telegram_notification "$error_summary. Check system logs for details." "error"
     exit 1
 fi
