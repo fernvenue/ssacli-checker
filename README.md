@@ -52,3 +52,9 @@ systemctl enable ssacli-checker.timer --now
 systemctl status ssacli-checker.timer
 systemctl status ssacli-checker.service
 ```
+
+*You may wanna restrict access to the service file, so that your environment variables are not readable by other users:*
+
+```bash
+chmod 600 /etc/systemd/system/ssacli-checker.service
+```

@@ -270,7 +270,7 @@ done
 
 if [[ $controller_errors -eq 0 && $drive_errors -eq 0 ]]; then
     log "INFO" "Health check completed successfully - no errors found"
-    send_telegram_notification "All HPE Smart Array controllers and drives are healthy" "success"
+    send_telegram_notification "All HPE Smart Array controllers and drives are healthy." "success"
     exit 0
 else
     error_summary=""
